@@ -25,19 +25,24 @@ import (
 )
 
 type config struct {
-	Path          string       `config:"path"`
-	Filename      string       `config:"filename"`
-	RotateEveryKb uint         `config:"rotate_every_kb" validate:"min=1"`
-	NumberOfFiles uint         `config:"number_of_files"`
-	Codec         codec.Config `config:"codec"`
-	Permissions   uint32       `config:"permissions"`
+	Path            string       `config:"path"`
+	Filename 		string       `config:"filename"`
+	RotateEveryKb   uint         `config:"rotate_every_kb" validate:"min=1"`
+	NumberOfFiles   uint         `config:"number_of_files"`
+	Codec           codec.Config `config:"codec"`
+	Permissions     uint32       `config:"permissions"`
+	RotateEveryMin  uint         `config:"rotate_every_min" validate:"min=1"`
+	ArchiveFiles    bool         `config:"archive_files"`
+	ArchivePath     string       `config:"output_path"`
 }
 
 var (
 	defaultConfig = config{
-		NumberOfFiles: 7,
-		RotateEveryKb: 10 * 1024,
-		Permissions:   0600,
+		NumberOfFiles:   7,
+		RotateEveryKb:   10 * 1024,
+		Permissions:     0600,
+		RotateEveryMin:  0,
+		ArchiveFiles:    false,
 	}
 )
 

@@ -21,6 +21,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/elastic/beats/v7/libbeat/beat"
 	"github.com/elastic/beats/v7/libbeat/common"
@@ -88,6 +89,9 @@ func (out *fileOutput) init(beat beat.Info, c config) error {
 		file.MaxBackups(c.NumberOfFiles),
 		file.Permissions(os.FileMode(c.Permissions)),
 		file.WithLogger(logp.NewLogger("rotator").With(logp.Namespace("rotator"))),
+		file.Interval(time.Duration(c.RotateEveryMin) * time.Minute),
+		file.OutputFolder(c.ArchivePath),
+		file.ArchiveFiles(c.ArchiveFiles),
 	)
 	if err != nil {
 		return err

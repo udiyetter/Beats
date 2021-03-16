@@ -18,7 +18,9 @@
 package file
 
 import (
+	"archive/zip"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,6 +33,10 @@ import (
 // MaxBackupsLimit is the upper bound on the number of backup files. Any values
 // greater will result in an error.
 const MaxBackupsLimit = 1024
+
+const RotateFileName = "cortex-xdr"
+const RotateFileNameFormat = "2006-01-02-15-04-05"
+const RotateFileNameExt = ".zip"
 
 // rotateReason is the reason why file rotation occurred.
 type rotateReason uint32
@@ -62,15 +68,17 @@ func (rr rotateReason) String() string {
 // basis. It also purges the oldest rotated files when the maximum number of
 // backups is reached.
 type Rotator struct {
-	filename        string
-	maxSizeBytes    uint
-	maxBackups      uint
-	permissions     os.FileMode
-	log             Logger // Optional Logger (may be nil).
-	interval        time.Duration
-	rotateOnStartup bool
-	intervalRotator *intervalRotator // Optional, may be nil
-	redirectStderr  bool
+	filename              string
+	maxSizeBytes          uint
+	maxBackups            uint
+	permissions           os.FileMode
+	log                   Logger // Optional Logger (may be nil).
+	interval              time.Duration
+	rotateOnStartup       bool
+	intervalRotator       *intervalRotator // Optional, may be nil
+	redirectStderr        bool
+	outputFolder          string
+	archiveFiles          bool
 
 	file  *os.File
 	size  uint
@@ -123,6 +131,20 @@ func WithLogger(l Logger) RotatorOption {
 func Interval(d time.Duration) RotatorOption {
 	return func(r *Rotator) {
 		r.interval = d
+	}
+}
+
+// Flag for set the file archive
+func ArchiveFiles(a bool) RotatorOption {
+	return func(r *Rotator) {
+		r.archiveFiles = a
+	}
+}
+
+// Output for the zip file which contains the logs
+func OutputFolder(f string) RotatorOption {
+	return func(r *Rotator) {
+		r.outputFolder = f
 	}
 }
 
@@ -188,6 +210,7 @@ func NewFileRotator(filename string, options ...RotatorOption) (*Rotator, error)
 // Write writes the given bytes to the file. This implements io.Writer. If
 // the write would trigger a rotation the rotation is done before writing to
 // avoid going over the max size. Write is safe for concurrent use.
+// If we want to rotate the folder, we need to enable the interval rotation
 func (r *Rotator) Write(data []byte) (int, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -397,6 +420,12 @@ func (r *Rotator) rotate(reason rotateReason) error {
 		return errors.Wrap(err, "error file closing current file")
 	}
 
+	if r.archiveFiles {
+		if err := r.archiveFile(); err != nil{
+			return errors.Wrap(err, "failed to archive file")
+		}
+	}
+
 	var err error
 	if r.intervalRotator != nil {
 		// Interval and size rotation use different filename patterns, so we use
@@ -411,6 +440,50 @@ func (r *Rotator) rotate(reason rotateReason) error {
 	}
 
 	return r.purgeOldBackups()
+}
+
+func (r *Rotator) archiveFile() error {
+	_, err := os.Stat(r.filename)
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return errors.Wrap(err, "failed to rotate backups")
+	}
+
+	archiveFile := filepath.Join(r.outputFolder, r.generateArchiveFileName())
+	outFile, err := os.Create(archiveFile)
+	if err != nil {
+		return errors.Wrap(err, "failed to create archive file")
+	}
+	defer outFile.Close()
+
+	// Create a new zip archive.
+	w := zip.NewWriter(outFile)
+
+	dat, err := ioutil.ReadFile(r.filename)
+	if err != nil {
+		return errors.Wrap(err, "fail to read file")
+	}
+
+	// Add some files to the archive.
+	filenameWithoutPath := filepath.Base(r.filename)
+	f, err := w.Create(filenameWithoutPath)
+	if err != nil {
+		return errors.Wrap(err, "fail to create writer file")
+	}
+	_, err = f.Write(dat)
+	if err != nil {
+		return errors.Wrap(err, "fail to write file into archive")
+	}
+	if err = w.Close(); err != nil {
+		return errors.Wrap(err, "failed to close writer file")
+	}
+	return nil
+}
+
+//TODO: make the file name using the beat name like we do in file.go
+func (r *Rotator) generateArchiveFileName() string {
+	return fmt.Sprintf("%s-%s%s", RotateFileName, time.Now().Format(RotateFileNameFormat), RotateFileNameExt)
 }
 
 func (r *Rotator) rotateByInterval(reason rotateReason) error {

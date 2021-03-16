@@ -18,10 +18,13 @@
 package file_test
 
 import (
+	"archive/zip"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -73,6 +76,107 @@ func TestFileRotator(t *testing.T) {
 
 	Rotate(t, r)
 	AssertDirContents(t, dir, "sample.log.2")
+}
+
+func TestFileRotatorAndArchive(t *testing.T) {
+	logp.TestingSetup()
+
+	dir, err := ioutil.TempDir("", "file_rotator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	archive, err := ioutil.TempDir(dir, "path_rotator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(archive)
+
+	filename := filepath.Join(dir, "sample.log")
+	r, err := file.NewFileRotator(filename,
+		file.MaxBackups(2),
+		file.WithLogger(logp.NewLogger("rotator").With(logp.Namespace("rotator"))),
+		file.ArchiveFiles(true),
+		file.OutputFolder(archive),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	WriteMsg(t, r)
+	AssertDirContents(t, dir, "sample.log")
+
+	Rotate(t, r)
+	AssertDirContents(t, dir, "sample.log.1")
+	AssertZipContents(t, archive, "sample.log")
+
+	WriteMsg(t, r)
+	AssertDirContents(t, dir, "sample.log", "sample.log.1")
+
+	Rotate(t, r)
+	AssertDirContents(t, dir, "sample.log.1", "sample.log.2")
+	AssertZipContents(t, archive, "sample.log", "sample.log.1")
+
+	WriteMsg(t, r)
+	AssertDirContents(t, dir, "sample.log", "sample.log.1", "sample.log.2")
+
+	Rotate(t, r)
+	AssertDirContents(t, dir, "sample.log.1", "sample.log.2")
+	AssertZipContents(t, archive, "sample.log", "sample.log.1", "sample.log.1")
+
+
+	Rotate(t, r)
+	AssertDirContents(t, dir, "sample.log.2")
+}
+
+func TestFileRotatorAndArchiveInterval(t *testing.T) {
+	logp.TestingSetup()
+
+	dir, err := ioutil.TempDir("", "file_rotator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	archive, err := ioutil.TempDir(dir, "path_rotator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(archive)
+
+	filename := filepath.Join(dir, "sample.log")
+	r, err := file.NewFileRotator(filename,
+		file.MaxBackups(2),
+		file.WithLogger(logp.NewLogger("rotator").With(logp.Namespace("rotator"))),
+		file.Interval(time.Duration(1) * time.Minute),
+		file.ArchiveFiles(true),
+		file.OutputFolder(archive),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	WriteMsg(t, r)
+	AssertDirContents(t, dir, "sample.log")
+
+	Rotate(t, r)
+	AssertDirContents(t, dir, "sample.log.1")
+	AssertZipContents(t, archive, "sample.log")
+
+	WriteMsg(t, r)
+	AssertDirContents(t, dir, "sample.log", "sample.log.1")
+
+	Rotate(t, r)
+	AssertDirContents(t, dir, "sample.log.1", "sample.log.2")
+	AssertZipContents(t, archive, "sample.log", "sample.log.1")
+
+	WriteMsg(t, r)
+	AssertDirContents(t, dir, "sample.log", "sample.log.1", "sample.log.2")
+
+
 }
 
 func TestFileRotatorConcurrently(t *testing.T) {
@@ -242,6 +346,61 @@ func AssertDirContents(t *testing.T, dir string, files ...string) {
 	sort.Strings(files)
 	sort.Strings(names)
 	assert.EqualValues(t, files, names)
+}
+
+func AssertZipContents(t *testing.T, dir string, files ...string) {
+	t.Helper()
+
+	f, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	names, err := f.Readdirnames(-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fileNames := []string{}
+	for _, name := range names{
+		if strings.HasSuffix(name, ".zip"){
+			read, err := zip.OpenReader(filepath.Join(dir, name))
+			if err != nil {
+				msg := "Failed to open: %s"
+				fmt.Println(msg, err)
+			}
+			defer read.Close()
+
+			for _, file := range read.File {
+				fileName, err := listFiles(file)
+				if err != nil {
+					fmt.Println("Failed to read from zip")
+				}
+				fileNames = append(fileNames, fileName)
+			}
+		}
+	}
+
+	sort.Strings(files)
+	sort.Strings(fileNames)
+	assert.EqualValues(t, files, fileNames)
+
+}
+
+func listFiles(file *zip.File) (string, error) {
+	fileread, err := file.Open()
+	if err != nil {
+		msg := "Failed to open zip %s for reading: %s"
+		return "", fmt.Errorf(msg, file.Name, err)
+	}
+	defer fileread.Close()
+
+	if err != nil {
+		msg := "Failed to read zip %s for reading: %s"
+		return "", fmt.Errorf(msg, file.Name, err)
+	}
+
+	return file.Name, nil
 }
 
 func WriteMsg(t *testing.T, r *file.Rotator) {
