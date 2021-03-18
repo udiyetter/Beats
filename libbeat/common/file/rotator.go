@@ -421,9 +421,18 @@ func (r *Rotator) rotate(reason rotateReason) error {
 	}
 
 	if r.archiveFiles {
-		if err := r.archiveFile(); err != nil{
+		tempFilename := r.generateArchiveFileName(true)
+		filename := tempFilename[5:]
+		tempArchiveFile := filepath.Join(r.outputFolder, tempFilename)
+		archiveFile := filepath.Join(r.outputFolder, filename)
+		if err := r.archiveFile(tempArchiveFile); err != nil{
 			return errors.Wrap(err, "failed to archive file")
 		}
+
+		if err := os.Rename(tempArchiveFile, archiveFile); err != nil {
+			return errors.Wrap(err, "failed to rotate backups")
+		}
+
 	}
 
 	var err error
@@ -442,7 +451,7 @@ func (r *Rotator) rotate(reason rotateReason) error {
 	return r.purgeOldBackups()
 }
 
-func (r *Rotator) archiveFile() error {
+func (r *Rotator) archiveFile(archiveFile string) error {
 	_, err := os.Stat(r.filename)
 	if os.IsNotExist(err) {
 		return nil
@@ -450,7 +459,6 @@ func (r *Rotator) archiveFile() error {
 		return errors.Wrap(err, "failed to rotate backups")
 	}
 
-	archiveFile := filepath.Join(r.outputFolder, r.generateArchiveFileName())
 	outFile, err := os.Create(archiveFile)
 	if err != nil {
 		return errors.Wrap(err, "failed to create archive file")
@@ -482,8 +490,10 @@ func (r *Rotator) archiveFile() error {
 }
 
 //TODO: make the file name using the beat name like we do in file.go
-func (r *Rotator) generateArchiveFileName() string {
-	return fmt.Sprintf("%s-%s%s", RotateFileName, time.Now().Format(RotateFileNameFormat), RotateFileNameExt)
+func (r *Rotator) generateArchiveFileName(isTemp bool) string {
+	temp := ""
+	if temp = "temp-"; isTemp {}
+	return fmt.Sprintf("%s%s-%s%s", temp, RotateFileName, time.Now().Format(RotateFileNameFormat), RotateFileNameExt)
 }
 
 func (r *Rotator) rotateByInterval(reason rotateReason) error {
