@@ -172,10 +172,48 @@ setup.kibana:
 
 # Configure what output to use when sending the data collected by the beat.
 
+# -------------------------------- File Output ---------------------------------
+output.file:
+  # Boolean flag to enable or disable the output module.
+  enabled: true
+
+    # Configure JSON encoding
+    #codec.json:
+    # Pretty-print JSON event
+    #pretty: false
+
+    # Configure escaping HTML symbols in strings.
+  #escape_html: false
+
+  # Path to the directory where to save the generated files. The option is
+  # mandatory.
+  #path: "/tmp/filebeat"
+
+  # Name of the generated files. The default is `filebeat` and it generates
+  # files: `filebeat`, `filebeat.1`, `filebeat.2`, etc.
+  #filename: filebeat
+
+  # Maximum size in kilobytes of each file. When this size is reached, and on
+  # every Filebeat restart, the files are rotated. The default value is 10240
+  # kB.
+  rotate_every_kb: 10000
+
+  # Maximum number of files under path. When this number of files is reached,
+  # the oldest file is deleted and the rest are shifted from last to first. The
+  # default is 7 files.
+  number_of_files: 10
+
+  # Permissions to use for file creation. The default is 0600.
+  permissions: 0600
+
+  rotate_every_min: 5
+
+  archive_files: true
+
 # ---------------------------- Elasticsearch Output ----------------------------
 output.elasticsearch:
   # Array of hosts to connect to.
-  hosts: ["localhost:9200"]
+  #hosts: ["localhost:9200"]
 
   # Protocol - either `http` (default) or `https`.
   #protocol: "https"
