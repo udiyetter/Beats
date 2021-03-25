@@ -530,7 +530,7 @@ func (s PackageSpec) rootDir() string {
 
 	// NOTE: This uses .BeatName instead of .Name because we wanted the internal
 	// directory to not include "-oss".
-	return s.MustExpand("{{.BeatName}}-{{.Version}}{{if .Snapshot}}-SNAPSHOT{{end}}{{if .OS}}-{{.OS}}{{end}}{{if .Arch}}-{{.Arch}}{{end}}")
+	return s.MustExpand("{{.BeatName}}{{if .Snapshot}}-SNAPSHOT{{end}}{{if .OS}}-{{.OS}}{{end}}{{if .Arch}}-{{.Arch}}{{end}}")
 }
 
 // PackageZip packages a zip file.
